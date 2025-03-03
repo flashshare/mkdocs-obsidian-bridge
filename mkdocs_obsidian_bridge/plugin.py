@@ -87,6 +87,10 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
         # Getting the page path that we are linking from
         page_path = Path(page.file.abs_src_path)
 
+        # Skip processing for Jupyter notebook files
+        if page_path.suffix == '.ipynb':
+            return markdown
+
         # Look for matches and replace
         markdown = self.process_markdown_links(page_path, markdown)
         markdown = self.process_obsidian_links(page_path, markdown)
@@ -167,9 +171,14 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
         (if possible to find a matching sub-path)
         '''
 
+        # Convert relative paths to absolute before continuing
         if not page_path.is_absolute():
-            page_path = (self.docs_dir / page_path).resolve()
-
+            page_path = Path(os.path.abspath(os.path.join(self.docs_dir, str(page_path))))
+        
+        # Original assertion (now will always pass)
+        assert page_path.is_absolute()
+        
+        # Remainder of the method stays unchanged
         # For Regex, match groups are:
         #       0: Whole markdown link e.g. [Alt-text](url#head "title")
         #       label: Alt text
@@ -204,7 +213,7 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
 
     def replace_markdown_link(self, page_path: Path, match: re.Match) -> str:
         if not page_path.is_absolute():
-            page_path = (self.docs_dir / page_path).resolve()
+            page_path = Path(os.path.abspath(os.path.join(self.docs_dir, str(page_path))))
 
         whole_match: str = match[0]
         link_filepath = Path(match['filepath'].strip())  # Relative path from the link
@@ -258,7 +267,7 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
                     return ''
 
         if not page_path.is_absolute():
-            page_path = (self.docs_dir / page_path).resolve()
+            page_path = Path(os.path.abspath(os.path.join(self.docs_dir, str(page_path))))
 
         # Let's split the source into regular parts and fenced parts.
         # This gives a list of strings where indices are the following:
@@ -278,7 +287,7 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
 
     def replace_obsidian_link(self, page_path: Path, match: re.Match) -> str:
         if not page_path.is_absolute():
-            page_path = (self.docs_dir / page_path).resolve()
+            page_path = Path(os.path.abspath(os.path.join(self.docs_dir, str(page_path))))
 
         whole_match: str = match[0]
         matched_filepath: str = match['filepath'].strip()
