@@ -47,6 +47,7 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
     def __init__(self):
         self.file_map: FilenameToPaths | None = None
         self.attr_list: str | None = None
+        self.site_path: str = ""
 
     def on_config(self, config: MkDocsConfig) -> MkDocsConfig:
         # mkdocs defaults
@@ -71,6 +72,9 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
                     '''be ignored. You need to also enable the 'attr_list' Markdown extension.'''
                 )
                 self.attr_list = None
+
+        # Set the site path based on the environment variable or default to empty
+        self.site_path = os.getenv('MKDOCS_SITE_PATH', '')
 
         return config
 
@@ -174,10 +178,10 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
         # Convert relative paths to absolute before continuing
         if not page_path.is_absolute():
             page_path = Path(os.path.abspath(os.path.join(self.docs_dir, str(page_path))))
-        
+
         # Original assertion (now will always pass)
         assert page_path.is_absolute()
-        
+
         # Remainder of the method stays unchanged
         # For Regex, match groups are:
         #       0: Whole markdown link e.g. [Alt-text](url#head "title")
@@ -222,7 +226,7 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
             new_link = f'''[{
                 match['label']
             }]({
-                urllib.parse.quote(new_path.as_posix())
+                urllib.parse.quote(self.get_path(self.site_path, new_path.as_posix()))
             }{
                 self.slugify(match['fragment'])
             }{
@@ -311,7 +315,7 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
             new_link = f'''[{
                 match['label'] or alternative_label
             }]({
-                urllib.parse.quote((new_path or link_filepath).as_posix())
+                urllib.parse.quote(self.get_path(self.site_path, (new_path or link_filepath).as_posix()))
             }{
                 self.slugify(match['fragment'])
             })'''
