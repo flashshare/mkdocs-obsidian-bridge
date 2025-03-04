@@ -26,11 +26,7 @@ class NoCandidatesError(Exception):
     pass
 
 
-class ObsidianBridgeConfig(base.Config):
-    invalid_link_attributes = co.ListOfItems(co.Type(str), default=[])
-
-
-class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
+class ObsidianBridgePlugin(BasePlugin):
     '''
     Plugin to make obsidian or incomplete markdown links work.
     '''
@@ -47,7 +43,6 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
     def __init__(self):
         self.file_map: FilenameToPaths | None = None
         self.attr_list: str | None = None
-        self.site_path: str = ""
 
     def on_config(self, config: MkDocsConfig) -> MkDocsConfig:
         # mkdocs defaults
@@ -63,18 +58,15 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
             separator=toc['separator']
         )
 
-        if len(self.config.invalid_link_attributes) > 0:
+        if len(self.config.get('invalid_link_attributes', [])) > 0:
             if 'attr_list' in config.markdown_extensions:
-                self.attr_list = ' '.join(self.config.invalid_link_attributes)
+                self.attr_list = ' '.join(self.config['invalid_link_attributes'])
             else:
                 logger.warning(
                     '''[ObsidianBridgePlugin] The 'invalid_link_attributes' from the 'mkdocs.yml' will '''
                     '''be ignored. You need to also enable the 'attr_list' Markdown extension.'''
                 )
                 self.attr_list = None
-
-        # Set the site path based on the environment variable or default to empty
-        self.site_path = os.getenv('MKDOCS_SITE_PATH', '')
 
         return config
 
@@ -182,7 +174,6 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
         # Original assertion (now will always pass)
         assert page_path.is_absolute()
 
-        # Remainder of the method stays unchanged
         # For Regex, match groups are:
         #       0: Whole markdown link e.g. [Alt-text](url#head "title")
         #       label: Alt text
@@ -226,7 +217,7 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
             new_link = f'''[{
                 match['label']
             }]({
-                urllib.parse.quote(self.get_path(self.site_path, new_path.as_posix()))
+                urllib.parse.quote(new_path.as_posix())
             }{
                 self.slugify(match['fragment'])
             }{
@@ -315,7 +306,7 @@ class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
             new_link = f'''[{
                 match['label'] or alternative_label
             }]({
-                urllib.parse.quote(self.get_path(self.site_path, (new_path or link_filepath).as_posix()))
+                urllib.parse.quote((new_path or link_filepath).as_posix())
             }{
                 self.slugify(match['fragment'])
             })'''
