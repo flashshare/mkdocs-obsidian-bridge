@@ -153,9 +153,9 @@ class ObsidianBridgePlugin(BasePlugin):
             return
 
         page_dir = page_path.parent
-        # filter the list of all candidates for the filename, so that only those with a match of the filepath
-        # from the link are left
-        path_candidates = [p for p in self.file_map[link_filepath.name] if match_link_filepath(p)]
+
+        # Ensure all candidate paths are absolute
+        path_candidates = [p.resolve() for p in self.file_map[link_filepath.name] if match_link_filepath(p)]
         try:
             return self.best_path(page_dir, path_candidates)
         except NoCandidatesError:
