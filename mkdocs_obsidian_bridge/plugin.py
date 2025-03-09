@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: © 2022 Serhii “GooRoo” Olendarenko
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 import logging
 import os
 import re
@@ -22,7 +26,11 @@ class NoCandidatesError(Exception):
     pass
 
 
-class ObsidianBridgePlugin(BasePlugin):
+class ObsidianBridgeConfig(base.Config):
+    invalid_link_attributes = co.ListOfItems(co.Type(str), default=[])
+
+
+class ObsidianBridgePlugin(BasePlugin[ObsidianBridgeConfig]):
     '''
     Plugin to make obsidian or incomplete markdown links work.
     '''
@@ -39,6 +47,7 @@ class ObsidianBridgePlugin(BasePlugin):
     def __init__(self):
         self.file_map: FilenameToPaths | None = None
         self.attr_list: str | None = None
+        self.site_path: str = ""
 
     def on_config(self, config: MkDocsConfig) -> MkDocsConfig:
         # mkdocs defaults
@@ -54,15 +63,18 @@ class ObsidianBridgePlugin(BasePlugin):
             separator=toc['separator']
         )
 
-        if len(self.config.get('invalid_link_attributes', [])) > 0:
+        if len(self.config.invalid_link_attributes) > 0:
             if 'attr_list' in config.markdown_extensions:
-                self.attr_list = ' '.join(self.config['invalid_link_attributes'])
+                self.attr_list = ' '.join(self.config.invalid_link_attributes)
             else:
                 logger.warning(
                     '''[ObsidianBridgePlugin] The 'invalid_link_attributes' from the 'mkdocs.yml' will '''
                     '''be ignored. You need to also enable the 'attr_list' Markdown extension.'''
                 )
                 self.attr_list = None
+
+        # Set the site path based on the environment variable or default to empty
+        self.site_path = os.getenv('MKDOCS_SITE_PATH', '')
 
         return config
 
@@ -82,10 +94,6 @@ class ObsidianBridgePlugin(BasePlugin):
         # Skip processing for Jupyter notebook files
         if page_path.suffix == '.ipynb':
             return markdown
-
-        # Ensure page path is absolute
-        if not page_path.is_absolute():
-            page_path = page_path.resolve()
 
         # Look for matches and replace
         markdown = self.process_markdown_links(page_path, markdown)
@@ -110,10 +118,9 @@ class ObsidianBridgePlugin(BasePlugin):
     def build_file_map(self, files: MkDocsFiles) -> FilenameToPaths:
         result = defaultdict(list)
         for file in files:
-            filepath = Path(file.abs_src_path).resolve()
+            filepath = Path(file.abs_src_path)
             filename = filepath.name
-            result[filename].append(filepath)
-        logger.info(f"File map built with {len(result)} entries")
+            result[filename].append(Path(file.abs_src_path))
         return result
 
     def best_path(self, page_dir: Path, candidates: list[Path]) -> Path:
@@ -170,11 +177,12 @@ class ObsidianBridgePlugin(BasePlugin):
 
         # Convert relative paths to absolute before continuing
         if not page_path.is_absolute():
-            page_path = page_path.resolve()
+            page_path = Path(os.path.abspath(os.path.join(self.docs_dir, str(page_path))))
 
         # Original assertion (now will always pass)
         assert page_path.is_absolute()
 
+        # Remainder of the method stays unchanged
         # For Regex, match groups are:
         #       0: Whole markdown link e.g. [Alt-text](url#head "title")
         #       label: Alt text
@@ -209,7 +217,7 @@ class ObsidianBridgePlugin(BasePlugin):
 
     def replace_markdown_link(self, page_path: Path, match: re.Match) -> str:
         if not page_path.is_absolute():
-            page_path = page_path.resolve()
+            page_path = Path(os.path.abspath(os.path.join(self.docs_dir, str(page_path))))
 
         whole_match: str = match[0]
         link_filepath = Path(match['filepath'].strip())  # Relative path from the link
@@ -218,7 +226,7 @@ class ObsidianBridgePlugin(BasePlugin):
             new_link = f'''[{
                 match['label']
             }]({
-                urllib.parse.quote(new_path.as_posix())
+                urllib.parse.quote(self.get_path(self.site_path, new_path.as_posix()))
             }{
                 self.slugify(match['fragment'])
             }{
@@ -263,7 +271,7 @@ class ObsidianBridgePlugin(BasePlugin):
                     return ''
 
         if not page_path.is_absolute():
-            page_path = page_path.resolve()
+            page_path = Path(os.path.abspath(os.path.join(self.docs_dir, str(page_path))))
 
         # Let's split the source into regular parts and fenced parts.
         # This gives a list of strings where indices are the following:
@@ -283,7 +291,7 @@ class ObsidianBridgePlugin(BasePlugin):
 
     def replace_obsidian_link(self, page_path: Path, match: re.Match) -> str:
         if not page_path.is_absolute():
-            page_path = page_path.resolve()
+            page_path = Path(os.path.abspath(os.path.join(self.docs_dir, str(page_path))))
 
         whole_match: str = match[0]
         matched_filepath: str = match['filepath'].strip()
@@ -295,7 +303,7 @@ class ObsidianBridgePlugin(BasePlugin):
                 self.slugify(match['fragment'])
             })'''
         else:
-            link_filepath = Path(matched_filepath.replace('\\', '/')).resolve()
+            link_filepath = Path(matched_filepath.replace('\\', '/'))
 
             new_path = self.find_best_path(link_filepath, page_path)
             # if nothing found, try once again but with ".md" file extension
@@ -307,7 +315,7 @@ class ObsidianBridgePlugin(BasePlugin):
             new_link = f'''[{
                 match['label'] or alternative_label
             }]({
-                urllib.parse.quote((new_path or link_filepath).as_posix())
+                urllib.parse.quote(self.get_path(self.site_path, (new_path or link_filepath).as_posix()))
             }{
                 self.slugify(match['fragment'])
             })'''
